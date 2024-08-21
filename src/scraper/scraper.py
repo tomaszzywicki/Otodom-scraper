@@ -29,7 +29,7 @@ def scrape_data(url):
 
         items = soup.find_all(class_="css-1ftqasz")
         items_attributes = {"powierzchnia": None, "pokoje": None}
-        powierzchnia_pattern = re.compile(r"(\d+.\d+)\s?m²")
+        powierzchnia_pattern = re.compile(r"(\d+(?:\.\d+)?)\s?m²")
         pokoje_pattern = re.compile(r"(\d+)\s+pok\w*")
 
         for item in items:
@@ -85,12 +85,13 @@ def scrape_all_listings(
     base_url, output_path, max_listings=3
 ):  # można dać parametr descending
     page_number = 1
-    listing_number = 1
+    listing_number = 0
     start_time = time.time()
     while True:
         url = f"{base_url}?ownerTypeSingleSelect=ALL&viewType=listing&by=LATEST&direction=DESC&page={page_number}"
         print(f"Scraping page {page_number}...")
         print(f"Time elapsed: {time.time() - start_time} seconds")
+        print(f"Total listings scraped: {listing_number}\n")
         page_content = fetch_page(url)
 
         soup = BeautifulSoup(page_content, "lxml")
@@ -105,19 +106,20 @@ def scrape_all_listings(
             page_number += 1
             continue
 
-        print(f"Found {len(a_items)} listings on page {page_number}\n\n")
-
         for item in a_items:
             href = item["href"]
             link = f"https://www.otodom.pl/{href}"
 
             listing_content = scrape_data(link)
+            if listing_content is None:
+                continue
+
             row = listing_data_to_dataframe(listing_content)
             append_row_to_csv(row, output_path)
 
             time.sleep(0.1)
             listing_number += 1
-            if listing_number > max_listings:
+            if listing_number >= max_listings:
                 print("Scraping finished :))")
                 return
 
@@ -140,16 +142,21 @@ def listing_data_to_dataframe(listing):
                 "ogrzewanie": listing["attributes"].get("ogrzewanie"),
                 "piętro": listing["attributes"].get("piętro"),
                 "stan_wykończenia": listing["attributes"].get("stan_wykończenia"),
+                "typ_ogłoszeniodawcy": listing["attributes"].get("typ_ogłoszeniodawcy"),
                 "dostępne_od": listing["attributes"].get("dostępne_od"),
-                "dodatkowe_informacje": listing["attributes"].get(
-                    "dodatkowe_informacje"
+                "informacje_dodatkowe": listing["attributes"].get(
+                    "informacje_dodatkowe"
                 ),
                 "rok_budowy": listing["attributes"].get("rok_budowy"),
                 "winda": listing["attributes"].get("winda"),
                 "rodzaj_zabudowy": listing["attributes"].get("rodzaj_zabudowy"),
+                "materiał_budynku": listing["attributes"].get("materiał_budynku"),
                 "okna": listing["attributes"].get("okna"),
-                "bezpieczeństwo": listing["attributes"].get("bezpieczeństwo"),
                 "wyposażenie": listing["attributes"].get("wyposażenie"),
+                "bezpieczeństwo": listing["attributes"].get("bezpieczeństwo"),
+                "certyfikat_energetyczny": listing["attributes"].get(
+                    "certyfikat_energetyczny"
+                ),
                 "opis": listing["opis"],
                 "dodano": listing["dodano"],
                 "aktualizacja": listing["aktualizacja"],

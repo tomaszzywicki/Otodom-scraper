@@ -5,7 +5,7 @@ import time
 
 
 def main():
-    scrape_all_listings(BASE_URL, OUTPUT_PATH, max_listings=5000)
+    scrape_all_listings(BASE_URL, OUTPUT_PATH, max_listings=5500)
 
 
 if __name__ == "__main__":
