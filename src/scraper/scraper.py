@@ -3,6 +3,9 @@ import requests
 from bs4 import BeautifulSoup
 from .settings import TIMEOUT, HEADERS
 import re
+import time
+import pandas as pd
+import os
 
 
 def fetch_page(url):
@@ -69,10 +72,89 @@ def scrape_data(url):
             "powierzchnia": items_attributes["powierzchnia"],
             "pokoje": items_attributes["pokoje"],
             "attributes": attributes,
-            "description": description.text if description else None,
+            "opis": description.text if description else None,
             "dodano": date_id_attributes["dodano"],
             "aktualizacja": date_id_attributes["aktualizacja"],
             "id": date_id_attributes["id"],
             "link": link,
             "scraped_date": date.today().isoformat(),
         }
+
+
+def scrape_all_listings(url, output_path, max_listings=3):  # można dać parametr descending
+    page_number = 1
+    listing_number = 1
+    while True:
+        url = f"{url}?by=DEFAULT&direction=DESC&viewType=listing&page={page_number}"
+        page_content = fetch_page(url)
+        soup = BeautifulSoup(page_content, "lxml")
+        listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
+        if not listings_div:
+            print("No listings found")
+            return
+        for listing in listings_div.find_all("article", {"data-cy": "listing-item"}):
+            if not listing:
+                continue
+            div = listing.find(
+                "div",
+                {"aria-selected": "true", "class": "css-17rb9mp"},
+            )
+            if not div:
+                continue
+            href = div.find("a")["href"]
+            if not href:
+                continue
+            link = f"https://www.otodom.pl/{href}"
+
+            listing_content = scrape_data(link)
+            row = listing_data_to_dataframe(listing_content)
+            append_row_to_csv(row, output_path)
+
+            time.sleep(0.1)
+            listing_number += 1
+            if listing_number > max_listings:
+                print("Scraping finished :))")
+                return
+        page_number += 1
+        time.sleep(1)
+
+
+def listing_data_to_dataframe(listing):
+    row = pd.DataFrame(
+        [
+            {
+                "id": listing["id"],
+                "tytul": listing["tytul"],
+                "cena": listing["cena"],
+                "czynsz": listing["czynsz"],
+                "kaucja": listing["attributes"].get("kaucja"),
+                "adres": listing["adres"],
+                "powierzchnia": listing["powierzchnia"],
+                "pokoje": listing["pokoje"],
+                "ogrzewanie": listing["attributes"].get("ogrzewanie"),
+                "piętro": listing["attributes"].get("piętro"),
+                "stan_wykończenia": listing["attributes"].get("stan_wykończenia"),
+                "dostępne_od": listing["attributes"].get("dostępne_od"),
+                "dodatkowe_informacje": listing["attributes"].get(
+                    "dodatkowe_informacje"
+                ),
+                "rok_budowy": listing["attributes"].get("rok_budowy"),
+                "winda": listing["attributes"].get("winda"),
+                "rodzaj_zabudowy": listing["attributes"].get("rodzaj_zabudowy"),
+                "okna": listing["attributes"].get("okna"),
+                "bezpieczeństwo": listing["attributes"].get("bezpieczeństwo"),
+                "wyposażenie": listing["attributes"].get("wyposażenie"),
+                "opis": listing["opis"],
+                "dodano": listing["dodano"],
+                "aktualizacja": listing["aktualizacja"],
+                "link": listing["link"],
+                "scraped_date": listing["scraped_date"],
+            }
+        ]
+    )
+    return row
+
+
+def append_row_to_csv(row, output_path):
+    file_exists = os.path.isfile(output_path)
+    row.to_csv(output_path, mode="a", header = not file_exists, index=False)
