@@ -163,6 +163,5 @@ cython_debug/
 
 
 # other
-markdown.md
 output/
 output_show.ipynb

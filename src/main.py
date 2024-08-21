@@ -1,11 +1,9 @@
-from scraper.settings import BASE_URL, OUTPUT_PATH
-from scraper.scraper import scrape_data, scrape_all_listings
-import pprint
-import time
+from scrapers.classes.MieszkanieWynajem import MieszkanieWynajem
 
 
 def main():
-    scrape_all_listings(BASE_URL, OUTPUT_PATH, max_listings=5500)
+    mieszkanie_scraper = MieszkanieWynajem(voividoship="mazowieckie", city="warszawa")
+    mieszkanie_scraper.scrape_listings(10)
 
 
 if __name__ == "__main__":
