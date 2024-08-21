@@ -5,10 +5,7 @@ import time
 
 
 def main():
-    start_time = time.time()
-    scrape_all_listings(BASE_URL, OUTPUT_PATH, max_listings=80)
-    end_time = time.time()
-    print(f"Scraping took {end_time - start_time} seconds")
+    scrape_all_listings(BASE_URL, OUTPUT_PATH, max_listings=5000)
 
 
 if __name__ == "__main__":

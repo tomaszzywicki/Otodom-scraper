@@ -81,29 +81,34 @@ def scrape_data(url):
         }
 
 
-def scrape_all_listings(url, output_path, max_listings=3):  # można dać parametr descending
+def scrape_all_listings(
+    base_url, output_path, max_listings=3
+):  # można dać parametr descending
     page_number = 1
     listing_number = 1
+    start_time = time.time()
     while True:
-        url = f"{url}?by=DEFAULT&direction=DESC&viewType=listing&page={page_number}"
+        url = f"{base_url}?ownerTypeSingleSelect=ALL&viewType=listing&by=LATEST&direction=DESC&page={page_number}"
+        print(f"Scraping page {page_number}...")
+        print(f"Time elapsed: {time.time() - start_time} seconds")
         page_content = fetch_page(url)
+
         soup = BeautifulSoup(page_content, "lxml")
         listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
         if not listings_div:
             print("No listings found")
             return
-        for listing in listings_div.find_all("article", {"data-cy": "listing-item"}):
-            if not listing:
-                continue
-            div = listing.find(
-                "div",
-                {"aria-selected": "true", "class": "css-17rb9mp"},
-            )
-            if not div:
-                continue
-            href = div.find("a")["href"]
-            if not href:
-                continue
+
+        a_items = listings_div.find_all("a", {"data-cy": "listing-item-link"})
+        if not a_items:
+            print("No listings found on page ", page_number)
+            page_number += 1
+            continue
+
+        print(f"Found {len(a_items)} listings on page {page_number}\n\n")
+
+        for item in a_items:
+            href = item["href"]
             link = f"https://www.otodom.pl/{href}"
 
             listing_content = scrape_data(link)
@@ -115,8 +120,9 @@ def scrape_all_listings(url, output_path, max_listings=3):  # można dać parame
             if listing_number > max_listings:
                 print("Scraping finished :))")
                 return
+
         page_number += 1
-        time.sleep(1)
+        time.sleep(0.2)
 
 
 def listing_data_to_dataframe(listing):
@@ -157,4 +163,4 @@ def listing_data_to_dataframe(listing):
 
 def append_row_to_csv(row, output_path):
     file_exists = os.path.isfile(output_path)
-    row.to_csv(output_path, mode="a", header = not file_exists, index=False)
+    row.to_csv(output_path, mode="a", header=not file_exists, index=False)
