@@ -1,8 +1,9 @@
 from scrapers.classes.WarszawaMieszkanieWynajem import WarszawaMieszkanieWynajem
-import psycopg2
+import pandas as pd
 
 
 def main():
+    pd.set_option("future.no_silent_downcasting", True)
     mieszkanie_scraper = WarszawaMieszkanieWynajem()
     mieszkanie_scraper.scrape_listings()
 

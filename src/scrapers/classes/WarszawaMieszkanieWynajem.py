@@ -27,14 +27,14 @@ class WarszawaMieszkanieWynajem:
         self.cursor_init()
 
     def cursor_init(self):
-        conn = psycopg2.connect(
+        self.conn = psycopg2.connect(
             host=os.getenv("DB_HOST"),
             database=os.getenv("DB_NAME"),
             user=os.getenv("DB_USER"),
             password=os.getenv("DB_PASSWORD"),
             port=os.getenv("DB_PORT"),
         )
-        self.cursor = conn.cursor()
+        self.cursor = self.conn.cursor()
 
     def fetch_page(self, url):
         try:
@@ -42,7 +42,7 @@ class WarszawaMieszkanieWynajem:
             response.raise_for_status()
             return response.text
         except requests.RequestException as e:
-            print(f"Error fetching {url}: {e}\n\n\n")
+            print(f"Error fetching {url}:\n\n {e}\n\n\n")
             return None
 
     def scrape_single_listing(self, url):
@@ -117,31 +117,33 @@ class WarszawaMieszkanieWynajem:
             "data_pobrania_danych": date.today().isoformat(),
         }
 
-    def scrape_listings(self, num_listings=2):
+    def scrape_listings(self):
 
         DATABASE_URI = os.getenv("DATABASE_URI")
         engine = create_engine(DATABASE_URI)
 
-        page_num = 1
+        page_num = 1 
         listing_num = 0
 
         start_time = time.time()
 
         url = f"{self.BASE_URL}&page={page_num}"
 
-        # page_content = self.fetch_page(url)
-        # if page_content is None:
-        #     return
+        # tu patrzymy sobie ile jest listingów łącznie na wszystkich stronach
+        page_content = self.fetch_page(url)
+        if page_content is None:
+            return
 
-        # soup = BeautifulSoup(page_content, "lxml")
+        soup = BeautifulSoup(page_content, "lxml")
 
-        # text = soup.find("div", class_="css-15svspy").text
-        # match = re.search(r"\d+(?=\D*$)", text)
+        text = soup.find("div", class_="css-15svspy").text
+        match = re.search(r"\d+(?=\D*$)", text)
 
-        # if match:
-        #     num_listings = int(match.group(0))
+        if match:
+            num_listings = int(match.group(0))
 
-        # num_listings = num_listings - 100 if num_listings > 100 else num_listings
+        # bierzemy ich mniej o 100 gdyby w czasie scrapowania niektóre by zniknęły
+        num_listings = num_listings - 100 if num_listings > 100 else num_listings
 
         while True:
             url = f"{self.BASE_URL}&page={page_num}"
@@ -151,6 +153,9 @@ class WarszawaMieszkanieWynajem:
             print(f"Total listings scraped: {listing_num}\n")
 
             page_content = self.fetch_page(url)
+            if page_content is None:
+                page_num += 1
+                break
             soup = BeautifulSoup(page_content, "lxml")
 
             listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
@@ -180,8 +185,9 @@ class WarszawaMieszkanieWynajem:
                 listing_num += 1
                 if listing_num >= num_listings:
                     print("Scraping finished :)")
-                    return
                     break
+
+            # wyjście z głównego while'a
             if listing_num >= num_listings:
                 break
 
@@ -199,6 +205,9 @@ class WarszawaMieszkanieWynajem:
             url = f"{self.BASE_URL}&page={page_num}"
 
             page_content = self.fetch_page(url)
+            if page_content is None:
+                page_num += 1
+                break
             soup = BeautifulSoup(page_content, "lxml")
 
             listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
@@ -220,7 +229,7 @@ class WarszawaMieszkanieWynajem:
                 if listing_content is None:
                     continue
 
-                row = self.tidy_row(listing_content)
+                row = self.prepare_row(listing_content)
                 # tutaj będzie sprawdzanie czy wśród ogłoszeń w bazie o tym samym id ogłoszenia jest ogłoszenie z tą samą datą modyfikacji
                 # jeśli nie to znaczy że ogłoszenie zostało zaktualizowane i dodajemy nowy wiersz z tym ogłoszeniem do bazy
                 # jeśli tak to znaczy że ogłoszenie jest już w bazie i nie trzeba go dodawać
@@ -470,7 +479,7 @@ class WarszawaMieszkanieWynajem:
             ]
 
             for col in columns_to_date:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
+                df[col] = pd.to_datetime(df[col], errors="coerce", format="%Y-%m-%d")
                 df[col] = df[col].apply(lambda x: None if pd.isna(x) else x)
             df = df.replace({"none": None})
             df.replace({"tak": True, "nie": False}, inplace=True)
@@ -487,5 +496,18 @@ class WarszawaMieszkanieWynajem:
             row.to_csv(output_path, mode="w", header=True, index=False)
 
     def insert_to_database(self, row, engine):
-        print(self.cursor)
-        row.to_sql("warszawa_wynajem", engine, if_exists="append", index=False)
+        self.cursor_init()
+        id_mieszkania = row["id_mieszkania"].iloc[0]
+        data_aktualizacji = row["aktualizacja"].iloc[0]
+        self.cursor.execute(
+            f"SELECT * FROM warszawa_wynajem WHERE id_mieszkania = '{id_mieszkania}' AND aktualizacja = '{data_aktualizacji}'"
+        )
+
+        db_row = self.cursor.fetchone()
+        self.conn.close()
+        if db_row is None:
+            row.to_sql("warszawa_wynajem", engine, if_exists="append", index=False)
+        else:
+            print(
+                f"Listing {id_mieszkania} with aktualizacja {data_aktualizacji} already in database"
+            )
