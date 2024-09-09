@@ -1,15 +1,7 @@
 TIMEOUT = 5
-offer_type = "wynajem"
-house_type = "mieszkanie"  # mieszkanie lub dom
-wojewodztwo = "mazowieckie"
-city = "warszawa"
-
-BASE_URL = (
-    f"https://www.otodom.pl/pl/wyniki/{offer_type}/{house_type}/{wojewodztwo}/{city}/"
-)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 }
 
-OUTPUT_FOLDER = "../output/"
+OUTPUT_FOLDER = "output/"

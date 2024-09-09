@@ -1,9 +1,10 @@
-from scrapers.classes.MieszkanieWynajem import MieszkanieWynajem
+from scrapers.classes.WarszawaMieszkanieWynajem import WarszawaMieszkanieWynajem
+import psycopg2
 
 
 def main():
-    mieszkanie_scraper = MieszkanieWynajem(voividoship="mazowieckie", city="warszawa")
-    mieszkanie_scraper.scrape_listings(10)
+    mieszkanie_scraper = WarszawaMieszkanieWynajem()
+    mieszkanie_scraper.scrape_listings()
 
 
 if __name__ == "__main__":
