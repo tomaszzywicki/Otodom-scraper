@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+import math
 
 from ..settings import TIMEOUT, HEADERS, OUTPUT_FOLDER
 
@@ -98,9 +99,6 @@ class WarszawaMieszkanieWynajem:
             value = text[1].strip()
             date_id_attributes[key] = value
 
-        link = soup.find("link", rel="canonical")
-        link = link["href"] if link else None
-
         return {
             "tytul": tytul.text if tytul else None,
             "cena": cena.text if cena else None,
@@ -113,7 +111,6 @@ class WarszawaMieszkanieWynajem:
             "dodano": date_id_attributes["dodano"],
             "aktualizacja": date_id_attributes["aktualizacja"],
             "id": date_id_attributes["id"],
-            "link": link,
             "data_pobrania_danych": date.today().isoformat(),
         }
 
@@ -122,12 +119,9 @@ class WarszawaMieszkanieWynajem:
         DATABASE_URI = os.getenv("DATABASE_URI")
         engine = create_engine(DATABASE_URI)
 
-        page_num = 1 
+        url = f"{self.BASE_URL}&page={1}"
+
         listing_num = 0
-
-        start_time = time.time()
-
-        url = f"{self.BASE_URL}&page={page_num}"
 
         # tu patrzymy sobie ile jest listingów łącznie na wszystkich stronach
         page_content = self.fetch_page(url)
@@ -141,10 +135,14 @@ class WarszawaMieszkanieWynajem:
 
         if match:
             num_listings = int(match.group(0))
+        else:
+            num_listings = 1000
 
-        # bierzemy ich mniej o 100 gdyby w czasie scrapowania niektóre by zniknęły
-        num_listings = num_listings - 100 if num_listings > 100 else num_listings
+        listing_num = 0
+        page_num = math.floor(num_listings / 36) + 1
+        url = f"{self.BASE_URL}&page={page_num}"
 
+        start_time = time.time()
         while True:
             url = f"{self.BASE_URL}&page={page_num}"
 
@@ -154,19 +152,22 @@ class WarszawaMieszkanieWynajem:
 
             page_content = self.fetch_page(url)
             if page_content is None:
-                page_num += 1
+                page_num -= 1
                 break
             soup = BeautifulSoup(page_content, "lxml")
 
             listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
             if not listings_div:
-                print("No more listings to scrape.")
-                break
+                # print("No more listings to scrape.")
+                # break
+                print("No listings found on page ", page_num)
+                page_num -= 1
+                continue
 
             a_items = listings_div.find_all("a", {"data-cy": "listing-item-link"})
             if not a_items:
                 print("No listings found on page ", page_num)
-                page_num += 1
+                page_num -= 1
                 continue
 
             for item in a_items:
@@ -177,21 +178,24 @@ class WarszawaMieszkanieWynajem:
                 if listing_content is None:
                     continue
 
-                row = self.prepare_row(listing_content)
-                self.insert_to_database(row, engine)
+                row = self.prepare_row(
+                    listing_content, link
+                )  # dodać parametr href i potem w funkcji zmienić TODO
+
+                self.insert_to_database(row, engine, link)
                 # self.append_to_output(row, OUTPUT_FOLDER + "mieszkanie_wynajem.csv")
 
                 time.sleep(0.1)
                 listing_num += 1
-                if listing_num >= num_listings:
+                if listing_num >= num_listings or page_num == 1:
                     print("Scraping finished :)")
                     break
 
             # wyjście z głównego while'a
-            if listing_num >= num_listings:
+            if listing_num >= num_listings or page_num == 1:
                 break
 
-            page_num += 1
+            page_num -= 1
             time.sleep(0.1)
 
         # Jak już skończy główną pętlę to teraz przechodzi spowrotem przez 1 i drugą stronę żeby sprawdzić czy nie ma albo nowych ogłoszeń z innym id niż jest w bazie albo czy nie ma ogłoszeń które są w bazie ale zostały zaaktualizowane
@@ -229,12 +233,8 @@ class WarszawaMieszkanieWynajem:
                 if listing_content is None:
                     continue
 
-                row = self.prepare_row(listing_content)
-                # tutaj będzie sprawdzanie czy wśród ogłoszeń w bazie o tym samym id ogłoszenia jest ogłoszenie z tą samą datą modyfikacji
-                # jeśli nie to znaczy że ogłoszenie zostało zaktualizowane i dodajemy nowy wiersz z tym ogłoszeniem do bazy
-                # jeśli tak to znaczy że ogłoszenie jest już w bazie i nie trzeba go dodawać
-
-                self.append_to_output(row, OUTPUT_FOLDER + "mieszkanie_wynajem.csv")
+                row = self.prepare_row(listing_content, link)
+                self.insert_to_database(row, engine, link)
 
                 time.sleep(0.1)
                 listing_num += 1
@@ -245,7 +245,7 @@ class WarszawaMieszkanieWynajem:
             if page_num == 3:
                 page_num = 1
 
-    def prepare_row(self, data):
+    def prepare_row(self, data, link):
         df = pd.DataFrame(
             [
                 {
@@ -280,7 +280,7 @@ class WarszawaMieszkanieWynajem:
                     "opis": data["opis"],
                     "dodano": data["dodano"],
                     "aktualizacja": data["aktualizacja"],
-                    "link": data["link"],
+                    "link": link,
                     "data_pobrania_danych": data["data_pobrania_danych"],
                 }
             ]
@@ -479,24 +479,33 @@ class WarszawaMieszkanieWynajem:
             ]
 
             for col in columns_to_date:
-                df[col] = pd.to_datetime(df[col], errors="coerce", format="%Y-%m-%d")
-                df[col] = df[col].apply(lambda x: None if pd.isna(x) else x)
+                df[col] = pd.to_datetime(
+                    df[col], errors="coerce", format="%d.%m.%Y", dayfirst=True
+                )
             df = df.replace({"none": None})
             df.replace({"tak": True, "nie": False}, inplace=True)
 
             return df
 
+        # Ogłoszenie nieaktywne
+        if df["aktualizacja"].iloc[0] is None or df["aktualizacja"].iloc[0] == "None":
+            return None
+
         return tidy_row(df)
 
     def append_to_output(self, row, output_path):
+        if row is None:
+            return
         file_exists = os.path.isfile(output_path)
         if file_exists:
             row.to_csv(output_path, mode="a", header=False, index=False)
         else:
             row.to_csv(output_path, mode="w", header=True, index=False)
 
-    def insert_to_database(self, row, engine):
+    def insert_to_database(self, row, engine, link):
         self.cursor_init()
+        if row is None:
+            return
         id_mieszkania = row["id_mieszkania"].iloc[0]
         data_aktualizacji = row["aktualizacja"].iloc[0]
         self.cursor.execute(
@@ -504,10 +513,18 @@ class WarszawaMieszkanieWynajem:
         )
 
         db_row = self.cursor.fetchone()
-        self.conn.close()
+
         if db_row is None:
             row.to_sql("warszawa_wynajem", engine, if_exists="append", index=False)
         else:
             print(
                 f"Listing {id_mieszkania} with aktualizacja {data_aktualizacji} already in database"
             )
+        # trzeba update'ować linki bo jakimś cudem źle się wstawiają do bazy
+        # nie mam pojęcia czemu
+        update_query = """
+        UPDATE warszawa_wynajem SET link = %s WHERE id_mieszkania = %s AND aktualizacja = %s
+        """
+        self.cursor.execute(update_query, (link, id_mieszkania, data_aktualizacji))
+        self.conn.commit()
+        self.conn.close()

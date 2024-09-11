@@ -1,5 +1,6 @@
 from scrapers.classes.WarszawaMieszkanieWynajem import WarszawaMieszkanieWynajem
 import pandas as pd
+import re
 
 
 def main():
