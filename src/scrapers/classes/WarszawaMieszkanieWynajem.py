@@ -1,5 +1,3 @@
-from hmac import new
-from json import load
 import time
 import os
 import re

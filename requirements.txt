@@ -1,4 +1,8 @@
-BeautifulSoup
+BeaufifulSoup4
 pandas
+numpy
 requests
 lxml
+sqlalchemy
+psycopg2
+dotenv
