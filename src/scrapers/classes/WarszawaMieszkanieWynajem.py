@@ -145,7 +145,7 @@ class WarszawaMieszkanieWynajem:
             url = f"{self.BASE_URL}&page={page_num}"
 
             print(f"Scraping page {page_num}...")
-            print(f"Time elapsed: {time.time() - start_time} seconds")
+            print(f"Time elapsed: {round(time.time() - start_time, 2)} seconds")
             print(f"Total listings scraped: {listing_num}\n")
 
             page_content = self.fetch_page(url)
