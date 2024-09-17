@@ -508,7 +508,6 @@ class WarszawaMieszkanieWynajem:
             return
         id_mieszkania = row["id_mieszkania"].iloc[0]
         data_aktualizacji = row["aktualizacja"].iloc[0]
-        print(row["data_pobrania_danych"])
         self.cursor.execute(
             f"SELECT * FROM warszawa_wynajem WHERE id_mieszkania = '{id_mieszkania}' AND aktualizacja = '{data_aktualizacji}'"
         )
@@ -517,6 +516,7 @@ class WarszawaMieszkanieWynajem:
 
         if db_row is None:
             row.to_sql("warszawa_wynajem", engine, if_exists="append", index=False)
+            print(f"Inserted listing {id_mieszkania} to database")
         else:
             print(
                 f"Listing {id_mieszkania} with aktualizacja {data_aktualizacji} already in database"
