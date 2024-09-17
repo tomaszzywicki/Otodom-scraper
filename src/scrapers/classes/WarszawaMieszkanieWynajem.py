@@ -473,13 +473,15 @@ class WarszawaMieszkanieWynajem:
                 "dostępne_od",
                 "dodano",
                 "aktualizacja",
-                "data_pobrania_danych",
             ]
 
             for col in columns_to_date:
                 df[col] = pd.to_datetime(
                     df[col], errors="coerce", format="%d.%m.%Y", dayfirst=True
                 )
+            df["data_pobrania_danych"] = pd.to_datetime(
+                df["data_pobrania_danych"], errors="coerce"
+            )
             df = df.replace({"none": None})
             df.replace({"tak": True, "nie": False}, inplace=True)
 
@@ -506,6 +508,7 @@ class WarszawaMieszkanieWynajem:
             return
         id_mieszkania = row["id_mieszkania"].iloc[0]
         data_aktualizacji = row["aktualizacja"].iloc[0]
+        print(row["data_pobrania_danych"])
         self.cursor.execute(
             f"SELECT * FROM warszawa_wynajem WHERE id_mieszkania = '{id_mieszkania}' AND aktualizacja = '{data_aktualizacji}'"
         )
