@@ -35,14 +35,23 @@ class WarszawaMieszkanieWynajem:
         )
         self.cursor = self.conn.cursor()
 
-    def fetch_page(self, url):
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            response.raise_for_status()
-            return response.text
-        except requests.RequestException as e:
-            print(f"Error fetching {url}:\n\n {e}\n\n\n")
-            return None
+    def fetch_page(self, url, max_retries=20, backoff_factor=0.5):
+        retry_count = 0
+        while True:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+                response.raise_for_status()
+                return response.text
+            except requests.RequestException as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    print(
+                        f"Error fetching {url}:\n\n after {retry_count} retries:\n{e}\n\n\n"
+                    )
+                    return None
+                sleep_time = backoff_factor * (2 ** (retry_count - 1))
+                print(f"Error fetching {url}:\n\n {e}\n\n\n")
+                time.sleep(sleep_time)
 
     def scrape_single_listing(self, url):
         page_content = self.fetch_page(url)
