@@ -35,7 +35,7 @@ class WarszawaMieszkanieWynajem:
         )
         self.cursor = self.conn.cursor()
 
-    def fetch_page(self, url, max_retries=20, backoff_factor=0.5):
+    def fetch_page(self, url, max_retries=5, backoff_factor=1):
         retry_count = 0
         while True:
             try:
@@ -43,6 +43,9 @@ class WarszawaMieszkanieWynajem:
                 response.raise_for_status()
                 return response.text
             except requests.RequestException as e:
+                if response.status_code == 410:
+                    print(f"Resource {url} is gone (410). Skipping...")
+                    return None
                 retry_count += 1
                 if retry_count >= max_retries:
                     print(
