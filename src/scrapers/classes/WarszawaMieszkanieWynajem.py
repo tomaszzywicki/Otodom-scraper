@@ -119,9 +119,15 @@ class WarszawaMieszkanieWynajem:
             "pokoje": items_attributes["pokoje"],
             "attributes": attributes,
             "opis": opis.text if opis else None,
-            "dodano": date_id_attributes["dodano"],
-            "aktualizacja": date_id_attributes["aktualizacja"],
-            "id": date_id_attributes["id"],
+            "dodano": (
+                date_id_attributes["dodano"] if "dodano" in date_id_attributes else None
+            ),
+            "aktualizacja": (
+                date_id_attributes["aktualizacja"]
+                if "aktualizacja" in date_id_attributes
+                else None
+            ),
+            "id": date_id_attributes["id"] if "id" in date_id_attributes else None,
             "data_pobrania_danych": date.today().isoformat(),
         }
 
