@@ -23,7 +23,7 @@ class WarszawaMieszkanieWynajem:
         self.district = ""
         self.district_area = ""
         self.BASE_URL = f"https://www.otodom.pl/pl/wyniki/wynajem/mieszkanie/{self.voividoship}/{self.city}/{self.city}/{self.city}/{self.district}/{self.district_area}?ownerTypeSingleSelect=ALL&viewType=listing&by=LATEST&direction=DESC"
-        self.cursor_init()
+        # self.cursor_init()
 
     def cursor_init(self):
         self.conn = psycopg2.connect(
@@ -132,6 +132,9 @@ class WarszawaMieszkanieWynajem:
         }
 
     def scrape_listings(self):
+        """
+        Główna funkcja która scrapuje dane, robi mały preprocessing i zapisuje do bazy danych / csv.
+        """
 
         DATABASE_URI = os.getenv("DATABASE_URI")
         engine = create_engine(DATABASE_URI)
@@ -147,7 +150,7 @@ class WarszawaMieszkanieWynajem:
 
         soup = BeautifulSoup(page_content, "lxml")
 
-        text = soup.find("div", class_="css-15svspy").text
+        text = soup.find("span", class_="css-15svspy").text
         match = re.search(r"\d+(?=\D*$)", text)
 
         if match:
@@ -199,8 +202,9 @@ class WarszawaMieszkanieWynajem:
                     listing_content, link
                 )  # dodać parametr href i potem w funkcji zmienić TODO
 
-                self.insert_to_database(row, engine, link)
-                # self.append_to_output(row, OUTPUT_FOLDER + "mieszkanie_wynajem.csv")
+                # Tutaj czy chcę do bazy danych czy do csv:
+                # self.insert_to_database(row, engine, link)
+                self.append_to_output(row, OUTPUT_FOLDER + "mieszkanie_wynajem.csv")
 
                 time.sleep(0.1)
                 listing_num += 1
