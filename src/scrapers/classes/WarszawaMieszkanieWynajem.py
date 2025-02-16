@@ -3,13 +3,14 @@ import os
 import re
 import requests
 import psycopg2
-from datetime import date
+from datetime import date, datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import math
+import json
 
 from ..settings import TIMEOUT, HEADERS, OUTPUT_FOLDER
 
@@ -64,9 +65,9 @@ class WarszawaMieszkanieWynajem:
 
         soup = BeautifulSoup(page_content, "lxml")
 
-        tytul = soup.find(class_="ehdsj771")
-        cena = soup.find(class_="e1w5xgvx1")
-        czynsz = soup.find(class_="e1w5xgvx5")
+        tytul = soup.find("h1", {"data-cy": "adPageAdTitle"})
+        cena = soup.find("strong", {"data-cy": "adPageHeaderPrice"})
+        czynsz = soup.find(class_="e1k1vyr25")
         adres = soup.find(class_="e42rcgs1")
 
         # Te rzeczy w szarych "kafelkach" ale interesuje mnie tylko powierzchnia i ilość pokoi
@@ -87,28 +88,34 @@ class WarszawaMieszkanieWynajem:
                 items_attributes["pokoje"] = pokoje
 
         # Wszystkie informacje z tabel
-        szczegoly = soup.find_all(class_="etn78ea3")
+        wiersze = soup.find_all("div", class_="eows69w1")
+        szczegoly = soup.find_all("p", class_="css-1airkmu")
+        szczegoly = [item.get_text(strip=True) for item in szczegoly]
         attributes = {}
 
-        # Tutaj iteruje po parzystych elementach listy, bo co drugi to klucz a co drugi wartość (i odpowienio je parsuje)
-        for i in range(0, len(szczegoly), 2):
-            key_text = szczegoly[i].get_text(separator=" ", strip=True)
-            value_text = szczegoly[i + 1].get_text(separator=" ", strip=True)
-            key_text = key_text.rstrip(" :").lower().replace(" ", "_")
-            attributes[key_text] = value_text
+        for wiersz in wiersze:
+            p_elements = wiersz.find_all("p")
+            if len(p_elements) >= 2:
+                key = p_elements[0].getText().rstrip(" :").lower().replace(" ", "_")
+                value = p_elements[1].getText()
+                attributes[key] = value
 
-        opis = soup.find(class_="e1f0p0zw1")
+
+        next_data = soup.find('script', {'id': '__NEXT_DATA__'})
+        data = json.loads(next_data.string)
+        ad_data = data.get('props', {}).get('pageProps', {}).get('ad', {})
+        if next_data:
+            data = json.loads(next_data.string)
+            opis = data['props']['pageProps']['ad']['description']
+            opis = BeautifulSoup(opis, 'lxml')
+
 
         # Daty dodania i aktualizacji oraz ID ogłoszenia
-        date_and_id = soup.find_all(class_="e82kd4s2")
-        date_id_attributes = {}
+        date_dodano = datetime.fromisoformat(ad_data.get('createdAt', '1970-01-01T00:00:00+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+        date_aktualizacja = datetime.fromisoformat(ad_data.get('modifiedAt', '1970-01-01T00:00:00+00:00')).strftime('%Y-%m-%d %H:%M:%S') 
 
-        for item in date_and_id:
-            text = item.get_text()
-            text = text.split(":")
-            key = text[0].strip().lower().replace(" ", "_")
-            value = text[1].strip()
-            date_id_attributes[key] = value
+        listing_id = soup.find("p", class_="e1aeqjrs2").text
+        listing_id = listing_id[4:]
 
         return {
             "tytul": tytul.text if tytul else None,
@@ -120,14 +127,12 @@ class WarszawaMieszkanieWynajem:
             "attributes": attributes,
             "opis": opis.text if opis else None,
             "dodano": (
-                date_id_attributes["dodano"] if "dodano" in date_id_attributes else None
+                date_dodano if date_dodano else None 
             ),
             "aktualizacja": (
-                date_id_attributes["aktualizacja"]
-                if "aktualizacja" in date_id_attributes
-                else None
+                date_aktualizacja if date_aktualizacja else None
             ),
-            "id": date_id_attributes["id"] if "id" in date_id_attributes else None,
+            "id": listing_id if listing_id else None,
             "data_pobrania_danych": date.today().isoformat(),
         }
 
@@ -172,14 +177,13 @@ class WarszawaMieszkanieWynajem:
 
             page_content = self.fetch_page(url)
             if page_content is None:
+                print(f"None page at {url}")
                 page_num -= 1
                 break
             soup = BeautifulSoup(page_content, "lxml")
 
             listings_div = soup.find("div", {"data-cy": "search.listing.organic"})
             if not listings_div:
-                # print("No more listings to scrape.")
-                # break
                 print("No listings found on page ", page_num)
                 page_num -= 1
                 continue
@@ -198,13 +202,15 @@ class WarszawaMieszkanieWynajem:
                 if listing_content is None:
                     continue
 
+
                 row = self.prepare_row(
                     listing_content, link
                 )  # dodać parametr href i potem w funkcji zmienić TODO
 
+
                 # Tutaj czy chcę do bazy danych czy do csv:
                 # self.insert_to_database(row, engine, link)
-                self.append_to_output(row, OUTPUT_FOLDER + "mieszkanie_wynajem.csv")
+                self.append_to_output(row, "output.csv")
 
                 time.sleep(0.1)
                 listing_num += 1
@@ -317,6 +323,8 @@ class WarszawaMieszkanieWynajem:
 
             def change_money_columns(value):
                 value = str(value)
+                if "/" in value:
+                    value = value.strip("/mc")
                 if "EUR" in value:
                     return (
                         float(
@@ -492,21 +500,21 @@ class WarszawaMieszkanieWynajem:
 
             df = df[new_column_order]
 
-            columns_to_date = [
-                "dostępne_od",
-                "dodano",
-                "aktualizacja",
-            ]
+            # columns_to_date = [
+            #     "dostępne_od",
+            #     "dodano",
+            #     "aktualizacja",
+            # ]
 
-            for col in columns_to_date:
-                df[col] = pd.to_datetime(
-                    df[col], errors="coerce", format="%d.%m.%Y", dayfirst=True
-                )
-            df["data_pobrania_danych"] = pd.to_datetime(
-                df["data_pobrania_danych"], errors="coerce"
-            )
-            df = df.replace({"none": None})
-            df.replace({"tak": True, "nie": False}, inplace=True)
+            # for col in columns_to_date:
+            #     df[col] = pd.to_datetime(
+            #         df[col], errors="coerce", format="%d.%m.%Y", dayfirst=True
+            #     )
+            # df["data_pobrania_danych"] = pd.to_datetime(
+            #     df["data_pobrania_danych"], errors="coerce"
+            # )
+            # df = df.replace({"none": None})
+            # df.replace({"tak": True, "nie": False}, inplace=True)
 
             return df
 
@@ -518,6 +526,7 @@ class WarszawaMieszkanieWynajem:
 
     def append_to_output(self, row, output_path):
         if row is None:
+            print("None row.")
             return
         file_exists = os.path.isfile(output_path)
         if file_exists:
